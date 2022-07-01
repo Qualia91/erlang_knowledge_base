@@ -68,8 +68,12 @@ handle_call(_Request, _From, LoopState) ->
 -spec handle_cast(any(), loop_state()) -> {noreply, loop_state()}.
 handle_cast({move_rover, From, WorkerIndex, StartX, StartY, InputLine}, LoopState = #loop_state{regex_pattern = Pattern}) ->
     lager:debug("Rover ~p recieved work - Start: (~p, ~p), Input: ~p", [WorkerIndex, StartX, StartY, InputLine]),
-    From ! {rover_finished, WorkerIndex, InputLine},
-    match_input_data(InputLine, Pattern),
+
+    {Transform, Actions} = match_input_data(InputLine, Pattern),
+
+    UpdatedTransform = apply_actions(Transform, {StartX, StartY}, Actions),
+
+    From ! {rover_finished, WorkerIndex, UpdatedTransform},
     {noreply, LoopState};
 handle_cast(_Msg, LoopState) ->
     {noreply, LoopState}.
@@ -101,13 +105,34 @@ match_input_data(InputData, Pattern) ->
     end.
 
 parse_groups([StartX, StartY, StartOrientation, Actions], InputData) ->
-    lager:info("StartX: ~p", [parse_group(StartX, InputData)]),
-    lager:info("StartY: ~p", [parse_group(StartY, InputData)]),
-    lager:info("StartOrientation: ~p", [parse_group(StartOrientation, InputData)]),
-    lager:info("Actions: ~p", [parse_group(Actions, InputData)]).
+    [StartOrientationChar] = parse_group(StartOrientation, InputData),
+    {
+        interview_question_rover_transform:create(
+            list_to_integer(parse_group(StartX, InputData)),
+            list_to_integer(parse_group(StartY, InputData)),
+            StartOrientationChar
+        ),
+        parse_group(Actions, InputData)
+    }.
 
 parse_group({StartPos, Size}, InputData) ->
     lists:sublist(InputData, StartPos + 1, Size).
+
+apply_actions(error, _, Reason) ->
+    {error, Reason};
+apply_actions(CurrentTransform, _, []) ->
+    {not_lost, CurrentTransform};
+apply_actions(CurrentTransform, {MaxX, MaxY}, [NextAction | Rest]) ->
+    NextTransform = interview_question_rover_transform:apply_action(
+                CurrentTransform,
+                NextAction
+            ),
+    case interview_question_rover_transform:check_bounds(MaxX, MaxY, NextTransform) of
+        in_bounds ->
+            apply_actions(NextTransform, {MaxX, MaxY}, Rest);
+        out_of_bound ->
+            {lost, CurrentTransform}
+    end.
 
 %%%===================================================================
 %%% Tests

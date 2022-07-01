@@ -20,11 +20,10 @@
 
 -define(COLLECT_DATA_TIMEOUT, 1000).
 
-% interview_question_rover:send_data().
-
 %% External API
 -export([
-    send_data/0
+    read_input_and_run/0,
+    read_input_and_run/1
 ]).
 
 -define(SERVER, ?MODULE).
@@ -33,8 +32,11 @@
 %%% API
 %%%=============================================================================
 
-send_data() ->
-    [StartPosLine | Rest] = readlines("input_file.txt"),
+read_input_and_run() ->
+    read_input_and_run("input_file.txt").
+
+read_input_and_run(FileName) ->
+    [StartPosLine | Rest] = readlines(FileName),
     [StartXStr, StartYStr] = string:tokens(StartPosLine, " "),
     StartX = list_to_integer(StartXStr),
     StartY = list_to_integer(StartYStr),
@@ -52,12 +54,23 @@ send_data() ->
     lager:info("Rovers running: ~p", [NoRoversRunning]),
     
     {_, ReturnList} = lists:unzip(lists:sort(collect_data(NoRoversRunning, 0, []))),
-
-    lager:info("Return Data: ~p", [ReturnList]).
+    
+    print_all(ReturnList).
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+print_all([]) ->
+    ok;
+print_all([Hd | Rest]) ->
+    print(Hd),
+    print_all(Rest).
+
+print({lost, {transform, X, Y, Ori}}) ->
+    io:format("(~p, ~p, ~c) ~s~n", [X, Y, Ori, "LOST"]);
+print({not_lost, {transform, X, Y, Ori}}) ->
+    io:format("(~p, ~p, ~c)~n", [X, Y, Ori]).
 
 readlines(FileName) ->
     {ok, Binary} = file:read_file(FileName),
