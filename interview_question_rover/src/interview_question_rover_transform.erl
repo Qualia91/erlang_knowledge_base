@@ -1,18 +1,14 @@
 %%%-----------------------------------------------------------------------------
 %%% @doc
-%%%
+%%% Transform object, with behaviours to manage moving transform.
 %%% @author boc_dev
-%%% @copyright <COPY_WRITE>
+%%% @copyright MIT
 %%% @version 0.0.1
 %%% @end
 %%%-----------------------------------------------------------------------------
 
 -module(interview_question_rover_transform).
--author(nickw).
-
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
--endif.
+-author(boc_dev).
 
 %%%=============================================================================
 %%% Exports and Definitions
@@ -32,7 +28,6 @@
     y           :: integer(),
     orientation :: char()
 }).
--type transform() :: transform.
 
 %%%=============================================================================
 %%% API
@@ -96,7 +91,6 @@ rotate_clockwise(Transform = #transform{orientation = $W}) ->
 
 -ifdef(TEST).
 
-example_test() ->
-    ?assertEqual(true, true).
+-include_lib("eunit/include/eunit.hrl").
 
 -endif.

@@ -1,18 +1,14 @@
 %%%-----------------------------------------------------------------------------
 %%% @doc
-%%%
+%%% User facing module of the application
 %%% @author boc_dev
-%%% @copyright <COPY_WRITE>
+%%% @copyright MIT
 %%% @version 0.0.1
 %%% @end
 %%%-----------------------------------------------------------------------------
 
 -module(interview_question_rover).
--author(nickw).
-
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
--endif.
+-author(boc_dev).
 
 %%%=============================================================================
 %%% Exports and Definitions
@@ -32,9 +28,21 @@
 %%% API
 %%%=============================================================================
 
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% Loads input_file.txt, and runs application using data within.
+%% @end
+%%------------------------------------------------------------------------------
+-spec read_input_and_run() -> ok.
 read_input_and_run() ->
     read_input_and_run("input_file.txt").
 
+%%------------------------------------------------------------------------------
+%% @doc
+%% Loads file defined by FileName, and runs application using data within.
+%% @end
+%%------------------------------------------------------------------------------
 read_input_and_run(FileName) ->
     [StartPosLine | Rest] = readlines(FileName),
     [StartXStr, StartYStr] = string:tokens(StartPosLine, " "),
@@ -95,7 +103,6 @@ collect_data(NoRoversRunning, ResponseSize, Acc) ->
 
 -ifdef(TEST).
 
-example_test() ->
-    ?assertEqual(true, true).
+-include_lib("eunit/include/eunit.hrl").
 
 -endif.

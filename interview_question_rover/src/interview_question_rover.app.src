@@ -1,5 +1,5 @@
 {application, interview_question_rover,
- [{description, "An OTP application"},
+ [{description, "An example interview question - Mars Rover"},
   {vsn, "0.1.0"},
   {registered, []},
   {mod, {interview_question_rover_app, []}},

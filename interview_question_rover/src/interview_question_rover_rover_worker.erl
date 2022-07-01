@@ -1,19 +1,17 @@
 %%%-----------------------------------------------------------------------------
 %%% @doc
-%%%
-%%% @author nickw
-%%% @copyright <COPY_WRITE>
+%%% Poolboy worker responsible for moving the rover transform about according 
+%%% to its input line.
+%%% @author boc_dev
+%%% @copyright MIT
 %%% @version 0.0.1
 %%% @end
 %%%-----------------------------------------------------------------------------
 
 -module(interview_question_rover_rover_worker).
--author(nickw).
--behaviour(poolboy_worker).
+-author(boc_dev).
 
--ifdef(TEST).
--include_lib("eunit/include/eunit.hrl").
--endif.
+-behaviour(poolboy_worker).
 
 %%%=============================================================================
 %%% Exports and Definitions
@@ -140,7 +138,6 @@ apply_actions(CurrentTransform, {MaxX, MaxY}, [NextAction | Rest]) ->
 
 -ifdef(TEST).
 
-example_test() ->
-    ?assertEqual(true, true).
+-include_lib("eunit/include/eunit.hrl").
 
 -endif.			
