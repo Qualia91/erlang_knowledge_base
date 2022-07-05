@@ -1,0 +1,15 @@
+{application, kafka_consumer,
+ [{description, "An OTP application"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, {kafka_consumer_app, []}},
+  {applications,
+   [
+    crypto, cowboy, websocket_client, kernel, stdlib, websocket_client
+   ]},
+  {env,[]},
+  {modules, []},
+
+  {licenses, ["Apache 2.0"]},
+  {links, []}
+ ]}.

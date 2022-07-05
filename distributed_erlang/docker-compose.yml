@@ -1,0 +1,19 @@
+version: "3.9"
+services:
+  first:
+    tty: true
+    build: 
+      context: first/
+    init: true
+    expose:
+    - 8080
+    ports:
+    - "8080:8080"
+    hostname: first_host
+
+  second:
+    tty: true
+    build: 
+      context: second/
+    init: true
+    hostname: second_host
