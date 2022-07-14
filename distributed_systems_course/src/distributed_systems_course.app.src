@@ -5,7 +5,8 @@
   {mod, {distributed_systems_course_app, []}},
   {applications,
    [kernel,
-    stdlib
+    stdlib,
+    lager
    ]},
   {env,[]},
   {modules, []},
