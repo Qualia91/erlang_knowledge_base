@@ -11,6 +11,7 @@
 %%% fact you don't get shared memoory in erlang.
 %%% Also, the sending back to the ets table is just for debugging ease. The data structure 
 %%% is the processes we made along the way...
+%%% Think this only works for simple graphs (undirected, loop free, unweighted and without parallel edges), so _1 and _2 don't work
 %%%
 %%% @author boc_dev
 %%% @version 0.0.1
