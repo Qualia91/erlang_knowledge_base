@@ -99,13 +99,16 @@ start_tree_graph() ->
     Pid4 = create_node(4, Tid, MaxBitStrLength),
     Pid5 = create_node(5, Tid, MaxBitStrLength),
     
-    distributed_node:set_neighbours(Pid0, [Pid3, Pid4, Pid5]),
-    distributed_node:set_neighbours(Pid1, [Pid0]),
-    distributed_node:set_neighbours(Pid2, [Pid0]),
-    distributed_node:set_neighbours(Pid3, [Pid1]),
-    distributed_node:set_neighbours(Pid4, [Pid1]),
-    distributed_node:set_neighbours(Pid5, [Pid2]),
+    distributed_node:set_neighbours(Pid0, [Pid1, Pid2, Pid4, Pid5]),
+    distributed_node:set_neighbours(Pid1, [Pid0, Pid3, Pid4]),
+    distributed_node:set_neighbours(Pid2, [Pid0, Pid5]),
+    distributed_node:set_neighbours(Pid3, [Pid1, Pid0]),
+    distributed_node:set_neighbours(Pid4, [Pid1, Pid0]),
+    distributed_node:set_neighbours(Pid5, [Pid2, Pid0]),
 
+    iterate(Tid, 5),
+    iterate(Tid, 5),
+    iterate(Tid, 5),
     iterate(Tid, 5).
 
 start_tree_graph_2() ->
@@ -227,12 +230,18 @@ iterate(Tid, MaxVal) ->
 
     % Now recieve all data back and sort to check
     _RetList = lists:sort(recieve_iter_data(MaxVal + 1, Tid)),
+
+    % Now tell all nodes to update thier colours
+    lager:info("Updating colours"),
+    ets:foldl(
+        fun({_, Pid, _}, _) ->
+            distributed_node:update_colours(Pid)
+        end,
+        0,
+        Tid
+    ),   
     
     lager:info("Shared memory simulation object at end of iteration: ~p", [ets:tab2list(Tid)]).
-
-%%%===================================================================
-%%% Internal functions
-%%%===================================================================
 
 integer_to_bit_string(0, String) ->
     String;

@@ -20,7 +20,8 @@
     start_iteration/1,
     request_colour/2,
     respond_colour/3,
-    set_neighbours/2
+    set_neighbours/2,
+    update_colours/1
 ]).
 
 %% Callbacks
@@ -42,6 +43,7 @@
     index                  :: integer(),
     neighbour_objects = [] :: list(neighbour_object()),
     colour                 :: string(),
+    new_colour             :: string(),
     database_pid           :: pid()
 }).
 -opaque loop_state() :: loop_state.
@@ -65,6 +67,9 @@ respond_colour(Pid, NeighbourColour, NeighbourPid) ->
 
 set_neighbours(Pid, NeighbourPids) ->
     gen_server:cast(Pid, {set_neighbours, NeighbourPids}).
+
+update_colours(Pid) ->
+    gen_server:cast(Pid, update_colours).
 
 %%%=============================================================================
 %%% Gen Server Callbacks
@@ -100,9 +105,12 @@ handle_cast({respond_colour, NeighbourColour, NeighbourPid}, LoopState = #loop_s
 handle_cast(start_processing, LoopState = #loop_state{index = Index, colour = Colour, neighbour_objects = NeighbourObjs, database_pid = DatabasePid}) ->
     NewColour = cole_vishkin:cole_vishkin_colour_reduction(Colour, get_neighbour_colours(NeighbourObjs)),
     DatabasePid ! {update_colour, Index, NewColour},
-    {noreply, LoopState};
+    {noreply, LoopState#loop_state{new_colour = NewColour}};
 handle_cast(iterate, LoopState = #loop_state{neighbour_objects = NeighbourObjs}) ->
     {noreply, LoopState#loop_state{neighbour_objects = request_and_reset_neighbour_colours(NeighbourObjs)}};
+handle_cast(update_colours, LoopState = #loop_state{new_colour = NewColour}) ->
+    io:format("HERE: ~p~n", [LoopState]),
+    {noreply, LoopState#loop_state{colour = NewColour}};
 handle_cast(Msg, LoopState) ->
     lager:debug("Other handle_cast: ~p~n", [Msg]),
     {noreply, LoopState}.
