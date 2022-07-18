@@ -25,7 +25,7 @@
     map/2
 ]).
 
--define(SERVER, ?MODULE).
+-define(SERVER, ?MODULE). 
 
 -type maybe(Type)   :: Type | nothing.
 -type either(Type)  :: {left, Type} | {right, Type}.
