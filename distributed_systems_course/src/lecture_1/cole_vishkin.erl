@@ -27,9 +27,11 @@
 
 % cole_vishkin:start_list(3).
 % cole_vishkin:start_tree_graph(0).
+% cole_vishkin:start_tree_graph_0().
 
 %% External API
 -export([
+    start_tree_graph_0/0,
     start_list/1,
     start_tree_graph/0,
     start_tree_graph_2/0,
@@ -75,6 +77,32 @@ start_list(MaxVal) ->
     distributed_node:set_neighbours(FirstPid, [LastPid]),
 
     iterate(Tid, MaxVal).
+    
+start_tree_graph_0() ->
+
+% Input
+%     0 -- 3
+%    / \
+%   1 - 2
+
+    % Create ets table to store lined list information
+    Tid = ets:new(linked_list_data, [ordered_set]),
+
+    % Get length of maximum colour from max val in sequence
+    LastBitString = integer_to_bit_string(3),
+    MaxBitStrLength = length(LastBitString),
+
+    Pid0 = create_node(0, Tid, MaxBitStrLength),
+    Pid1 = create_node(1, Tid, MaxBitStrLength),
+    Pid2 = create_node(2, Tid, MaxBitStrLength),
+    Pid3 = create_node(3, Tid, MaxBitStrLength),
+    
+    distributed_node:set_neighbours(Pid0, [Pid1, Pid2, Pid3]),
+    distributed_node:set_neighbours(Pid1, [Pid0, Pid2]),
+    distributed_node:set_neighbours(Pid2, [Pid0, Pid1]),
+    distributed_node:set_neighbours(Pid3, [Pid0]),
+
+    iterate(Tid, 3).
 
 start_tree_graph() ->
 
@@ -99,16 +127,13 @@ start_tree_graph() ->
     Pid4 = create_node(4, Tid, MaxBitStrLength),
     Pid5 = create_node(5, Tid, MaxBitStrLength),
     
-    distributed_node:set_neighbours(Pid0, [Pid1, Pid2, Pid4, Pid5]),
-    distributed_node:set_neighbours(Pid1, [Pid0, Pid3, Pid4]),
-    distributed_node:set_neighbours(Pid2, [Pid0, Pid5]),
-    distributed_node:set_neighbours(Pid3, [Pid1, Pid0]),
-    distributed_node:set_neighbours(Pid4, [Pid1, Pid0]),
-    distributed_node:set_neighbours(Pid5, [Pid2, Pid0]),
+    distributed_node:set_neighbours(Pid0, [Pid3, Pid4, Pid5]),
+    distributed_node:set_neighbours(Pid1, [Pid0]),
+    distributed_node:set_neighbours(Pid2, [Pid0]),
+    distributed_node:set_neighbours(Pid3, [Pid1]),
+    distributed_node:set_neighbours(Pid4, [Pid1]),
+    distributed_node:set_neighbours(Pid5, [Pid2]),
 
-    iterate(Tid, 5),
-    iterate(Tid, 5),
-    iterate(Tid, 5),
     iterate(Tid, 5).
 
 start_tree_graph_2() ->
@@ -325,6 +350,7 @@ pad_to_length_test() ->
 cole_vishkin_colour_reduction_test() ->
 
     TestCases = [
+        {{"00", ["01"]}, "00"},
         {{"0110010000", ["1010010000", "0010110000"]}, "0000000001"},
         {{"0000000000", ["0000000001", "0000000010", "0000000100"]}, "0000000011"}
     ],

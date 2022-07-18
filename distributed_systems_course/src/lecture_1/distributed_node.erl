@@ -157,9 +157,9 @@ update_and_check_complete(NeighbourColour, NeighbourPid, NeighbourObjs) ->
         {true, []},
         NeighbourObjs).
 
-update_and_check_iter({Pid, IterColour}, {IsComplete, Acc}, NeighbourColour, Pid) ->
+update_and_check_iter({Pid, _IterColour}, {IsComplete, Acc}, NeighbourColour, Pid) ->
     {IsComplete, [{Pid, NeighbourColour} | Acc]};
-update_and_check_iter({IterPid, null}, {IsComplete, Acc}, _NeighbourColour, _NeighbourPid) ->
+update_and_check_iter({IterPid, null}, {_IsComplete, Acc}, _NeighbourColour, _NeighbourPid) ->
     {false, [{IterPid, null} | Acc]};
 update_and_check_iter({IterPid, IterColour}, {IsComplete, Acc}, _NeighbourColour, _NeighbourPid) ->
     {IsComplete, [{IterPid, IterColour} | Acc]}.
