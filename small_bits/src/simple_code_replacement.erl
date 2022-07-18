@@ -49,20 +49,3 @@ loop() ->
 % Pid ! hello. % Will return new code
 
 % If loaded twice, the module is nuked and loop isnt running anymore :(
-
-%%%=============================================================================
-%%% Internal functions
-%%%=============================================================================
-
-%%%=============================================================================
-%%% Tests
-%%%=============================================================================
-
--ifdef(TEST).
-
--include_lib("eunit/include/eunit.hrl").
-
-example_test() ->
-    ?assertEqual(true, true).
-
--endif.
