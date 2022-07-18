@@ -6,7 +6,7 @@
 %%% @end
 %%%-----------------------------------------------------------------------------
 
--module(distributed_node).
+-module(gen_distributed_node).
 -author(boc_dev).
 -behaviour(gen_server).
 
@@ -17,11 +17,8 @@
 %% External API
 -export([
     start_link/3,
-    start_iteration/1,
-    request_colour/2,
-    respond_colour/3,
     set_neighbours/2,
-    update_colours/1
+    request_data/2
 ]).
 
 %% Callbacks
@@ -36,102 +33,131 @@
 
 -define(SERVER, ?MODULE).
 
--opaque neighbour_object() :: {pid(), string()}.
+-type neighbour_object(StoredDataType) :: {pid(), StoredDataType}.
 
 %% Loop state
 -record(loop_state, {
-    index                  :: integer(),
-    neighbour_objects = [] :: list(neighbour_object()),
-    colour                 :: string(),
-    new_colour             :: string(),
-    database_pid           :: pid()
+    module                 :: atom(),
+    unique_index           :: integer(),
+    neighbour_objects = [] :: list(neighbour_object(any())),
+    user_data              :: any()
 }).
 -opaque loop_state() :: loop_state.
+
+%%%=============================================================================
+%%% Callback definitions
+%%%=============================================================================
+
+-callback init(Args :: term()) ->
+    {ok, State :: term()} | {ok, State :: term(), timeout() | hibernate | {continue, term()}} |
+    {stop, Reason :: term()} | ignore.
+
+-callback request_data(State :: any()) -> {Request :: any(), State :: any()}.
+
+-callback respond_data(State :: any()) -> {Response :: any(), State :: any()}.
 
 %%%=============================================================================
 %%% API
 %%%=============================================================================
 
--spec start_link(integer(), integer(), pid()) -> {ok, pid()} | {error, {already_started, pid()}} | {error, Reason::any()}.
-start_link(Index, BitStringLength, DatabasePid) ->
-    gen_server:start_link(?MODULE, [Index, BitStringLength, DatabasePid], []).
-
-start_iteration(Pid) ->
-    gen_server:cast(Pid, iterate).
-
-request_colour(Pid, ReturnAddress) ->
-    gen_server:cast(Pid, {request_colour, ReturnAddress}).
-
-respond_colour(Pid, NeighbourColour, NeighbourPid) ->
-    gen_server:cast(Pid, {respond_colour, NeighbourColour, NeighbourPid}).
+start_link(Module, Index, Data) ->
+    gen_server:start_link(?MODULE, [Module, Index, Data], []).
 
 set_neighbours(Pid, NeighbourPids) ->
     gen_server:cast(Pid, {set_neighbours, NeighbourPids}).
 
-update_colours(Pid) ->
-    gen_server:cast(Pid, update_colours).
+request_data(NodePid, Request) ->
+    gen_server:cast(NodePid, {request_data, Request}).
 
 %%%=============================================================================
 %%% Gen Server Callbacks
 %%%=============================================================================
 
 -spec init(list()) -> {ok, loop_state()}.
-init([Index, BitStringLength, DatabasePid]) ->
-    StartingColour = cole_vishkin:pad_to_length(cole_vishkin:integer_to_bit_string(Index), BitStringLength),
+init([Module, Index, Data]) ->
     LoopState = #loop_state{
-        index             = Index,
-        colour            = StartingColour,
-        database_pid      = DatabasePid
+        module       = Module,
+        unique_index = Index,
+        user_data    = Data
     },
-    lager:debug("Starting node ~p with colour ~p", [Index, StartingColour]),
+    lager:debug("Starting node ~p", [Index]),
     {ok, LoopState}.
 
 -spec handle_call(any(), pid(), loop_state()) -> {ok, any(), loop_state()}.
-handle_call(Request, _From, LoopState) ->
-    Reply = ok,
-    lager:debug("Other handle_call: ~p~n", [Request]),
-    {reply, Reply, LoopState}.
+handle_call(Request, _From, LoopState = #loop_state{module = Module}) ->
+    try
+        Module:handle_call(Request, _From, LoopState)
+    catch
+        error:undef ->
+            Reply = ok,
+            lager:debug("Other handle_call: ~p~n", [Request]),
+            {reply, Reply, LoopState}
+    end.
 
--spec handle_cast(any(), loop_state()) -> {noreply, loop_state()}.
 handle_cast({set_neighbours, NeighbourPids}, LoopState) ->
     {noreply, LoopState#loop_state{neighbour_objects = create_neighbour_objs(NeighbourPids)}};
-handle_cast({request_colour, ReturnAddress}, LoopState = #loop_state{colour = Colour}) ->
-    distributed_node:respond_colour(ReturnAddress, Colour, self()),
-    {noreply, LoopState};
-handle_cast({respond_colour, NeighbourColour, NeighbourPid}, LoopState = #loop_state{neighbour_objects = NeighbourObjs}) ->
-    {IsComplete, UpdatedNeighbourObjs} = update_and_check_complete(NeighbourColour, NeighbourPid, NeighbourObjs),
-    start_processing(IsComplete),
-    {noreply, LoopState#loop_state{neighbour_objects = UpdatedNeighbourObjs}};
-handle_cast(start_processing, LoopState = #loop_state{index = Index, colour = Colour, neighbour_objects = NeighbourObjs, database_pid = DatabasePid}) ->
-    NewColour = cole_vishkin:cole_vishkin_colour_reduction(Colour, get_neighbour_colours(NeighbourObjs)),
-    DatabasePid ! {update_colour, Index, NewColour},
-    {noreply, LoopState#loop_state{new_colour = NewColour}};
-handle_cast(iterate, LoopState = #loop_state{neighbour_objects = NeighbourObjs}) ->
-    {noreply, LoopState#loop_state{neighbour_objects = request_and_reset_neighbour_colours(NeighbourObjs)}};
-handle_cast(update_colours, LoopState = #loop_state{new_colour = NewColour}) ->
-    {noreply, LoopState#loop_state{colour = NewColour}};
-handle_cast(Msg, LoopState) ->
-    lager:debug("Other handle_cast: ~p~n", [Msg]),
-    {noreply, LoopState}.
+handle_cast({request_data, Request}, LoopState = #loop_state{user_data = UserData, module = Module, neighbour_objects = NeighbourObjs}) ->
+    {Request, UpdatedUserState} = try
+        Module:request_data(Request, UserData)
+    catch
+        error:undef ->
+            lager:debug("Other request_data: ~p", [Request]),
+            {Request, UserData}
+    end,
+    request_and_reset_neighbour_data(Module:request_data(), NeighbourObjs);
+    {noreply, LoopState#loop_state{user_data = UpdatedUserState}};
+handle_cast({request_data, Request, From}, LoopState = #loop_state{user_data = UserData, module = Module, neighbour_objects = NeighbourObjs}) ->
+    {Response, UpdatedUserState} = Module:response_data(Request, UserData),
+    respond_data(From, Response),
+    {noreply, LoopState#loop_state{user_data = UpdatedUserState}};
+handle_cast(Msg, LoopState = #loop_state{module = Module}) ->
+    try
+        Module:handle_cast(Msg, LoopState)
+    catch
+        error:undef ->
+            lager:debug("Other handle_cast: ~p~n", [Msg]),
+            {noreply, LoopState}
+    end.
 
 -spec handle_info(any(), loop_state()) -> {noreply, loop_state()}.
-handle_info(Info, LoopState) ->
-    lager:debug("Other handle_info: ~p~n", [Info]),
-    {noreply, LoopState}.
+handle_info(Info, LoopState = #loop_state{module = Module}) ->
+    try
+        Module:handle_info(Info, LoopState)
+    catch
+        error:undef ->
+            lager:debug("Other handle_info: ~p~n", [Info]),
+            {noreply, LoopState}
+    end.
 
 -spec terminate(any(), loop_state()) -> ok.
-terminate(_Reason, _LoopState) ->
-    lager:debug("Terminating~n"),
-    ok.
+terminate(Reason, LoopState = #loop_state{module = Module}) ->
+    try
+        Module:terminate(Reason, LoopState)
+    catch
+        error:undef ->
+            lager:debug("Terminating~n")
+    end.
 
 -spec code_change(any(), loop_state(), any()) -> {ok, loop_state()}.
-code_change(_OldVsn, LoopState, _Extra) ->
-    {ok, LoopState}.
+code_change(OldVsn, LoopState = #loop_state{module = Module}, Extra) ->
+    try
+        Module:code_change(OldVsn, LoopState, Extra)
+    catch
+        error:undef ->
+            lager:debug("Code Changing"),
+            {ok, LoopState}
+    end.
 
 
 %%%=============================================================================
 %%% Internal
 %%%=============================================================================
+
+request_data(NodePid, Request, ReturnAddress) ->
+    gen_server:cast(NodePid, {request_data, Request, ReturnAddress}).
+
+respond_data(NodePid, Response) ->
+    gen_server:cast(NodePid, {respond_data, Response}).
 
 create_neighbour_objs(Pids) ->
     lists:map(
@@ -140,10 +166,10 @@ create_neighbour_objs(Pids) ->
         end,
         Pids).
 
-request_and_reset_neighbour_colours(NeighbourObjs) ->
+request_and_reset_neighbour_data(Request, NeighbourObjs) ->
     lists:map(
         fun({Pid, _}) ->
-            distributed_node:request_colour(Pid, self()),
+            request_data(Pid, Request, self()),
             {Pid, null}
         end,
         NeighbourObjs).
