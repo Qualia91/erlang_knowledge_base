@@ -37,10 +37,11 @@
 
 %% Loop state
 -record(loop_state, {
-    module                 :: atom(),
-    unique_index           :: integer(),
-    neighbour_objects = [] :: list(neighbour_object(any())),
-    user_data              :: any()
+    module                    :: atom(),
+    unique_index              :: integer(),
+    neighbour_pids = []       :: list(pid()),
+    user_data                 :: any(),
+    request_data_struct = #{} :: map()
 }).
 -opaque loop_state() :: loop_state.
 
@@ -48,13 +49,13 @@
 %%% Callback definitions
 %%%=============================================================================
 
--callback init(Args :: term()) ->
-    {ok, State :: term()} | {ok, State :: term(), timeout() | hibernate | {continue, term()}} |
-    {stop, Reason :: term()} | ignore.
+-callback init(Args :: term()) -> State :: term().
 
--callback request_data(State :: any()) -> {Request :: any(), State :: any()}.
+-callback intercept_request(InputRequest :: any(), State :: any()) -> {UpdatedRequest :: any(), State :: any()}.
 
--callback respond_data(State :: any()) -> {Response :: any(), State :: any()}.
+-callback handle_request_data(Request :: any(), State :: any()) -> {Response :: any(), State :: any()}.
+
+-callback handle_response_data(RequestedData :: list(any()), State :: any()) -> State :: any().
 
 %%%=============================================================================
 %%% API
@@ -78,41 +79,65 @@ init([Module, Index, Data]) ->
     LoopState = #loop_state{
         module       = Module,
         unique_index = Index,
-        user_data    = Data
+        user_data    = Module:init(Data)
     },
     lager:debug("Starting node ~p", [Index]),
     {ok, LoopState}.
 
 -spec handle_call(any(), pid(), loop_state()) -> {ok, any(), loop_state()}.
-handle_call(Request, _From, LoopState = #loop_state{module = Module}) ->
+handle_call(Request, From, LoopState = #loop_state{module = Module, user_data = Data}) ->
     try
-        Module:handle_call(Request, _From, LoopState)
+        {RespType, Reply, UpdatedData} = Module:handle_call(Request, From, Data),
+        {RespType, Reply, LoopState#loop_state{user_data = UpdatedData}}
     catch
         error:undef ->
-            Reply = ok,
             lager:debug("Other handle_call: ~p~n", [Request]),
-            {reply, Reply, LoopState}
+            {reply, ok, LoopState}
     end.
 
-handle_cast({set_neighbours, NeighbourPids}, LoopState) ->
-    {noreply, LoopState#loop_state{neighbour_objects = create_neighbour_objs(NeighbourPids)}};
-handle_cast({request_data, Request}, LoopState = #loop_state{user_data = UserData, module = Module, neighbour_objects = NeighbourObjs}) ->
-    {Request, UpdatedUserState} = try
-        Module:request_data(Request, UserData)
-    catch
-        error:undef ->
-            lager:debug("Other request_data: ~p", [Request]),
-            {Request, UserData}
+handle_cast({set_neighbours, NeighbourPids}, LoopState) when is_list(NeighbourPids) ->
+    {noreply, LoopState#loop_state{neighbour_pids = NeighbourPids}};
+handle_cast({request_data, Request}, LoopState = #loop_state{user_data = UserData, module = Module, neighbour_pids = NeighbourPids, request_data_struct = ReqDataStruct}) ->
+    % check if same request is already in pipeline
+    case maps:is_key(Request, ReqDataStruct) of
+        true ->
+            lager:error("Request ~p is already in flight, cannot send duplicate request", [Request]),
+            {noreply, LoopState};
+        false ->
+            {UpdatedRequest, UpdatedUserState} = try
+                Module:intercept_request(Request, UserData)
+            catch
+                error:undef ->
+                    lager:debug("Other request_data: ~p", [Request]),
+                    {Request, UserData}
+            end,
+            ReqDatum = request_and_reset_neighbour_data(UpdatedRequest, NeighbourPids),
+            {noreply, LoopState#loop_state{user_data = UpdatedUserState, request_data_struct = maps:put(UpdatedRequest, ReqDatum, ReqDataStruct)}}
+        end;
+handle_cast({request_data, Request, From}, LoopState = #loop_state{user_data = UserData, module = Module}) ->
+    {Response, UpdatedUserState} = Module:handle_request_data(Request, UserData),
+    respond_data(From, Request, Response, self()),
+    {noreply, LoopState#loop_state{user_data = UpdatedUserState}};
+handle_cast({response_data, Request, Response, From}, LoopState = #loop_state{user_data = UserData, module = Module, request_data_struct = ReqDataStruct}) ->
+    {UpdatedResponseStruct, ReturnUserData} = case maps:find(Request, ReqDataStruct) of
+        {ok, ResponseDatum} ->
+            {IsComplete, UpdatedResponseDatum} = update_and_check_complete(Response, From, ResponseDatum),
+            case IsComplete of
+                true ->
+                    UpdatedUserData = Module:handle_response_data(get_only_data(UpdatedResponseDatum), UserData),
+                    {maps:remove(Request, ReqDataStruct), UpdatedUserData};
+                false ->
+                    {maps:put(Request, ResponseDatum, ReqDataStruct), UserData}
+            end;
+        error ->
+            lager:warning("Response ~p to request ~p recieved that waas never sent", [Response, Request]),
+            {ReqDataStruct, UserData}
     end,
-    request_and_reset_neighbour_data(Module:request_data(), NeighbourObjs);
-    {noreply, LoopState#loop_state{user_data = UpdatedUserState}};
-handle_cast({request_data, Request, From}, LoopState = #loop_state{user_data = UserData, module = Module, neighbour_objects = NeighbourObjs}) ->
-    {Response, UpdatedUserState} = Module:response_data(Request, UserData),
-    respond_data(From, Response),
-    {noreply, LoopState#loop_state{user_data = UpdatedUserState}};
-handle_cast(Msg, LoopState = #loop_state{module = Module}) ->
+    {noreply, LoopState#loop_state{request_data_struct = UpdatedResponseStruct}};
+handle_cast(Msg, LoopState = #loop_state{module = Module, user_data = UserData}) ->
     try
-        Module:handle_cast(Msg, LoopState)
+        {RespType, UpdatedData} = Module:handle_cast(Msg, UserData),
+        {RespType, LoopState#loop_state{user_data = UpdatedData}}
     catch
         error:undef ->
             lager:debug("Other handle_cast: ~p~n", [Msg]),
@@ -120,9 +145,10 @@ handle_cast(Msg, LoopState = #loop_state{module = Module}) ->
     end.
 
 -spec handle_info(any(), loop_state()) -> {noreply, loop_state()}.
-handle_info(Info, LoopState = #loop_state{module = Module}) ->
+handle_info(Info, LoopState = #loop_state{module = Module, user_data = UserData}) ->
     try
-        Module:handle_info(Info, LoopState)
+        {RespType, UpdatedData} = Module:handle_info(Info, UserData),
+        {RespType, LoopState#loop_state{user_data = UpdatedData}}
     catch
         error:undef ->
             lager:debug("Other handle_info: ~p~n", [Info]),
@@ -130,18 +156,19 @@ handle_info(Info, LoopState = #loop_state{module = Module}) ->
     end.
 
 -spec terminate(any(), loop_state()) -> ok.
-terminate(Reason, LoopState = #loop_state{module = Module}) ->
+terminate(Reason, LoopState = #loop_state{module = Module, user_data = UserData}) ->
     try
-        Module:terminate(Reason, LoopState)
+        Module:terminate(Reason, UserData)
     catch
         error:undef ->
             lager:debug("Terminating~n")
     end.
 
 -spec code_change(any(), loop_state(), any()) -> {ok, loop_state()}.
-code_change(OldVsn, LoopState = #loop_state{module = Module}, Extra) ->
+code_change(OldVsn, LoopState = #loop_state{module = Module, user_data = UserData}, Extra) ->
     try
-        Module:code_change(OldVsn, LoopState, Extra)
+        {RespType, UpdatedData} = Module:code_change(OldVsn, UserData, Extra),
+        {RespType, LoopState#loop_state{user_data = UpdatedData}}
     catch
         error:undef ->
             lager:debug("Code Changing"),
@@ -153,11 +180,15 @@ code_change(OldVsn, LoopState = #loop_state{module = Module}, Extra) ->
 %%% Internal
 %%%=============================================================================
 
-request_data(NodePid, Request, ReturnAddress) ->
+request_data_internal(NodePid, Request, ReturnAddress) ->
     gen_server:cast(NodePid, {request_data, Request, ReturnAddress}).
 
-respond_data(NodePid, Response) ->
-    gen_server:cast(NodePid, {respond_data, Response}).
+respond_data(NodePid, Request, Response, From) ->
+    gen_server:cast(NodePid, {response_data, Request, Response, From}).
+
+get_only_data(UpdatedResponseDatum) ->
+    {_, Data} = lists:unzip(UpdatedResponseDatum),
+    Data.
 
 create_neighbour_objs(Pids) ->
     lists:map(
@@ -166,21 +197,22 @@ create_neighbour_objs(Pids) ->
         end,
         Pids).
 
-request_and_reset_neighbour_data(Request, NeighbourObjs) ->
-    lists:map(
-        fun({Pid, _}) ->
-            request_data(Pid, Request, self()),
-            {Pid, null}
+request_and_reset_neighbour_data(Request, NeighbourPids) ->
+    lists:foldl(
+        fun(Pid, Acc) ->
+            request_data_internal(Pid, Request, self()),
+            [{Pid, null} | Acc]
         end,
-        NeighbourObjs).
+        [],
+        NeighbourPids).
 
-update_and_check_complete(NeighbourColour, NeighbourPid, NeighbourObjs) ->
+update_and_check_complete(Response, From, ReqDataStruct) ->
     lists:foldl(
         fun(Elem, Acc) -> 
-            update_and_check_iter(Elem, Acc, NeighbourColour, NeighbourPid) 
+            update_and_check_iter(Elem, Acc, Response, From) 
         end,
         {true, []},
-        NeighbourObjs).
+        ReqDataStruct).
 
 update_and_check_iter({Pid, _IterColour}, {IsComplete, Acc}, NeighbourColour, Pid) ->
     {IsComplete, [{Pid, NeighbourColour} | Acc]};
@@ -206,6 +238,16 @@ get_neighbour_colours(NeighbourColours) ->
 
 -include_lib("eunit/include/eunit.hrl").
 
+get_only_data_test() ->
+    
+    TestCases = [
+        {[{null,3}, {null,2}, {null,1}], [3,2,1]},
+        {[], []}
+    ],
+
+    test_utilities:action_test_cases(TestCases, fun(Input) -> get_only_data(Input) end).
+
+
 create_neighbour_objs_test() ->
     
     TestCases = [
@@ -214,20 +256,6 @@ create_neighbour_objs_test() ->
     ],
 
     test_utilities:action_test_cases(TestCases, fun(Input) -> create_neighbour_objs(Input) end).
-
-request_and_reset_neighbour_colours_test() ->
-    
-    meck:new(distributed_node, [unstick, passthrough]),
-    meck:expect(distributed_node, request_colour, fun(_, _) -> ok end),
-    
-    TestCases = [
-        {[{1,1}, {2,2}, {3,3}], [{1,null}, {2,null}, {3,null}]},
-        {[], []}
-    ],
-
-    test_utilities:action_test_cases(TestCases, fun(Input) -> request_and_reset_neighbour_colours(Input) end),
-
-    meck:unload(distributed_node).
 
 update_and_check_iter_test() ->
     

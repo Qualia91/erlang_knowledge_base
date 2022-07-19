@@ -28,6 +28,8 @@
 % cole_vishkin:start_list(3).
 % cole_vishkin:start_tree_graph(0).
 % cole_vishkin:start_tree_graph_0().
+% cole_vishkin:gen_dist_example(5).
+% cole_vishkin:gen_dist_col_vishkin_example_1(5).
 
 %% External API
 -export([
@@ -38,7 +40,9 @@
     start_tree_graph_3/0,
     integer_to_bit_string/1,
     pad_to_length/2,
-    cole_vishkin_colour_reduction/2
+    cole_vishkin_colour_reduction/2,
+    gen_dist_example/1,
+    gen_dist_col_vishkin_example_1/1
 ]).
 
 -define(SERVER, ?MODULE).
@@ -46,6 +50,91 @@
 %%%=============================================================================
 %%% API
 %%%=============================================================================
+
+gen_dist_example(MaxVal) ->
+
+    % Create ets table to store lined list information
+    Tid = ets:new(linked_list_data, [ordered_set]),
+
+    {ok, FirstPid} = my_distributed_node:start_link(0),
+
+    % Start by making a linked list of processes
+    LastPid = lists:foldl(
+        fun(ItemIndex, PreviousPid) ->
+            {ok, Pid} = my_distributed_node:start_link(ItemIndex),
+            gen_distributed_node:set_neighbours(Pid, [PreviousPid]),
+            ets:insert_new(Tid, {ItemIndex, Pid}),
+            Pid
+        end,
+        FirstPid,
+        lists:seq(1, MaxVal)
+    ),
+
+    gen_distributed_node:set_neighbours(FirstPid, [LastPid]),
+
+    ets:foldl(
+        fun({_, Pid}, _) ->
+            my_distributed_node:request_some_data(Pid, some_req)
+        end,
+        0,
+        Tid
+    ).
+
+gen_dist_col_vishkin_example_1(MaxVal) ->
+
+    % Create ets table to store lined list information
+    Tid = ets:new(linked_list_data, [ordered_set]),
+
+    % Get length of maximum colour from max val in sequence
+    LastBitString = integer_to_bit_string(MaxVal),
+    MaxBitStrLength = length(LastBitString),
+
+    Self = self(),
+
+    {ok, FirstPid} = cole_vishkin_distributed_node:start_link(0, MaxBitStrLength, Self),
+    ets:insert_new(Tid, {0, FirstPid, pad_to_length(integer_to_bit_string(0), MaxBitStrLength)}),
+
+    % Start by making a linked list of processes
+    LastPid = lists:foldl(
+        fun(ItemIndex, PreviousPid) ->
+            {ok, Pid} = cole_vishkin_distributed_node:start_link(ItemIndex, MaxBitStrLength, Self),
+            gen_distributed_node:set_neighbours(Pid, [PreviousPid]),
+            Colour = pad_to_length(integer_to_bit_string(ItemIndex), MaxBitStrLength),
+            ets:insert_new(Tid, {ItemIndex, Pid, Colour}),
+            Pid
+        end,
+        FirstPid,
+        lists:seq(1, MaxVal)
+    ),
+
+    gen_distributed_node:set_neighbours(FirstPid, [LastPid]),
+
+    lager:info("Shared memory simulation object at start of iteration: ~p", [ets:tab2list(Tid)]),
+
+    % Now apply Cole-Vishkin colour reduction algorithm by sending start message to all node processes
+    lager:info("Starting iteration"),
+    ets:foldl(
+        fun({_, Pid, _}, _) ->
+            cole_vishkin_distributed_node:start_iteration(Pid)
+        end,
+        0,
+        Tid
+    ),
+
+    % Now recieve all data back and sort to check
+    _RetList = lists:sort(recieve_iter_data(MaxVal + 1, Tid)),
+
+    % Now tell all nodes to update thier colours
+    lager:info("Updating colours"),
+    ets:foldl(
+        fun({_, Pid, _}, _) ->
+            cole_vishkin_distributed_node:update_colours(Pid)
+        end,
+        0,
+        Tid
+    ),   
+    
+    lager:info("Shared memory simulation object at end of iteration: ~p", [ets:tab2list(Tid)]).
 
 start_list(MaxVal) ->
 
