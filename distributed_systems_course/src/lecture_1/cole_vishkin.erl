@@ -78,7 +78,9 @@ gen_dist_example(MaxVal) ->
         end,
         0,
         Tid
-    ).
+    ),
+
+    my_distributed_node:send_some_data(FirstPid, some_data).
 
 gen_dist_col_vishkin_example_1(MaxVal) ->
 

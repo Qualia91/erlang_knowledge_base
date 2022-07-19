@@ -18,7 +18,8 @@
 -export([
     start_link/3,
     set_neighbours/2,
-    request_data/2
+    request_data/2,
+    send_data/2
 ]).
 
 %% Callbacks
@@ -57,6 +58,10 @@
 
 -callback handle_response_data(RequestedData :: list(any()), State :: any()) -> State :: any().
 
+-callback intercept_send_data(InputData :: any(), State :: any()) -> {UpdatedData :: any(), State :: any()}.
+
+-callback handle_send_data(RequestedData :: list(any()), State :: any()) -> State :: any().
+
 %%%=============================================================================
 %%% API
 %%%=============================================================================
@@ -69,6 +74,9 @@ set_neighbours(Pid, NeighbourPids) ->
 
 request_data(NodePid, Request) ->
     gen_server:cast(NodePid, {request_data, Request}).
+
+send_data(NodePid, Data) ->
+    gen_server:cast(NodePid, {send_data, Data}).
 
 %%%=============================================================================
 %%% Gen Server Callbacks
@@ -97,6 +105,23 @@ handle_call(Request, From, LoopState = #loop_state{module = Module, user_data = 
 
 handle_cast({set_neighbours, NeighbourPids}, LoopState) when is_list(NeighbourPids) ->
     {noreply, LoopState#loop_state{neighbour_pids = NeighbourPids}};
+handle_cast({send_data, Data}, LoopState = #loop_state{user_data = UserData, module = Module, neighbour_pids = NeighbourPids}) ->
+    {UpdatedData, UpdatedUserState} = try
+        Module:intercept_send_data(Data, UserData)
+    catch
+        error:undef ->
+            lager:debug("Other intercept_send_data: ~p", [Data]),
+            {Data, UserData}
+    end,
+    lists:foreach(
+        fun(Pid) ->
+            send_data_internal(Pid, UpdatedData)
+        end,
+        NeighbourPids),
+    {noreply, LoopState#loop_state{user_data = UpdatedUserState}};
+handle_cast({incoming_data, Data}, LoopState = #loop_state{user_data = UserData, module = Module}) ->
+    UpdatedUserState = Module:handle_incoming_data(Data, UserData),
+    {noreply, LoopState#loop_state{user_data = UpdatedUserState}};
 handle_cast({request_data, Request}, LoopState = #loop_state{user_data = UserData, module = Module, neighbour_pids = NeighbourPids, request_data_struct = ReqDataStruct}) ->
     % check if same request is already in pipeline
     case maps:is_key(Request, ReqDataStruct) of
@@ -108,7 +133,7 @@ handle_cast({request_data, Request}, LoopState = #loop_state{user_data = UserDat
                 Module:intercept_request(Request, UserData)
             catch
                 error:undef ->
-                    lager:debug("Other request_data: ~p", [Request]),
+                    lager:debug("Other intercept_request_data: ~p", [Request]),
                     {Request, UserData}
             end,
             ReqDatum = request_and_reset_neighbour_data(UpdatedRequest, NeighbourPids),
@@ -175,7 +200,6 @@ code_change(OldVsn, LoopState = #loop_state{module = Module, user_data = UserDat
             {ok, LoopState}
     end.
 
-
 %%%=============================================================================
 %%% Internal
 %%%=============================================================================
@@ -185,6 +209,9 @@ request_data_internal(NodePid, Request, ReturnAddress) ->
 
 respond_data(NodePid, Request, Response, From) ->
     gen_server:cast(NodePid, {response_data, Request, Response, From}).
+
+send_data_internal(NodePid, Request) ->
+    gen_server:cast(NodePid, {incoming_data, Request}).
 
 get_only_data(UpdatedResponseDatum) ->
     {_, Data} = lists:unzip(UpdatedResponseDatum),
