@@ -1,26 +1,23 @@
 %%%-----------------------------------------------------------------------------
 %%% @doc
-%%% Top level application supervisor
+%%%
 %%% @author boc_dev
-%%% @copyright Apache 2.0
-%%% @version 0.1.0
-%%% @date 2022-07-17
+%%% @version 0.0.1
 %%% @end
 %%%-----------------------------------------------------------------------------
 
--module(patterns_sup).
+-module(db_cluster_sup).
 -author(boc_dev).
-
 -behaviour(supervisor).
 
 %%%=============================================================================
 %%% Exports and Definitions
 %%%=============================================================================
 
--export([
-    start_link/0
-]).
+%% External API
+-export([start_link/0]).
 
+%% Callbacks
 -export([init/1]).
 
 -define(SERVER, ?MODULE).
@@ -29,23 +26,26 @@
 %%% API
 %%%=============================================================================
 
+-spec start_link() -> supervisor:startlink_ret().
 start_link() ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
+%%%=============================================================================
+%%% Callbacks
+%%%=============================================================================
+
+-spec init(list()) -> {ok, {supervisor:sup_flags(), [supervisor:child_spec()]}} | ignore.
 init([]) ->
-    SupFlags = #{strategy => one_for_all,
+    SupFlags = #{strategy => one_for_one,
                  intensity => 10,
                  period => 10},
-
     ChildSpecs = [
-        create_child(dist_patterns_sup, dist_patterns_sup, [], supervisor)
     ],
-
     {ok, {SupFlags, ChildSpecs}}.
 
-%%%===================================================================
-%%% Internal functions
-%%%===================================================================
+%%%=============================================================================
+%%% Internal
+%%%=============================================================================
 
 create_child(ID, Module, Inputs, Type) ->
     #{
