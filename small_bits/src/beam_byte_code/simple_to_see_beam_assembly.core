@@ -1,0 +1,31 @@
+module 'simple_to_see_beam_assembly' ['module_info'/0,
+				      'module_info'/1,
+				      'some_func'/1]
+    attributes [%% Line 1
+		'file' =
+		    %% Line 1
+		    [{[115|[105|[109|[112|[108|[101|[95|[116|[111|[95|[115|[101|[101|[95|[98|[101|[97|[109|[95|[97|[115|[115|[101|[109|[98|[108|[121|[46|[101|[114|[108]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]],1}],
+		%% Line 9
+		'author' =
+		    %% Line 9
+		    [98|[111|[99|[95|[100|[101|[118]]]]]]]]
+'some_func'/1 =
+    %% Line 22
+    ( fun (_0) ->
+	  %% Line 23
+	  call 'erlang':'+'
+	      (( _0
+		 -| [{'function',{'some_func',1}}] ), 1)
+      -| [{'function',{'some_func',1}}] )
+'module_info'/0 =
+    ( fun () ->
+	  call 'erlang':'get_module_info'
+	      ('simple_to_see_beam_assembly')
+      -| [{'function',{'module_info',0}}] )
+'module_info'/1 =
+    ( fun (_0) ->
+	  call 'erlang':'get_module_info'
+	      ('simple_to_see_beam_assembly', ( _0
+						-| [{'function',{'module_info',1}}] ))
+      -| [{'function',{'module_info',1}}] )
+end
