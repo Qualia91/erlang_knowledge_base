@@ -1,0 +1,15 @@
+{application, cowboy_optional_route,
+ [{description, "An OTP application"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, {cowboy_optional_route_app, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    cowboy
+   ]},
+  {env,[]},
+  {modules, []},
+
+  {links, []}
+ ]}.
