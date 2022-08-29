@@ -1,0 +1,6 @@
+% comment
+test(A, B, C):
+    A + B + C + 1.
+
+test_2(A):
+    A - 1.

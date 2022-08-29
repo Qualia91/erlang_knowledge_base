@@ -1,0 +1,66 @@
+module 'test' ['main'/0,
+	       'module_info'/0,
+	       'module_info'/1,
+	       'test'/3]
+    attributes [%% Line 1
+		'file' =
+		    %% Line 1
+		    [{[116|[101|[115|[116|[46|[101|[114|[108]]]]]]]],1}],
+		%% Line 9
+		'author' =
+		    %% Line 9
+		    [98|[111|[99|[95|[100|[101|[118]]]]]]]]
+'main'/0 =
+    %% Line 23
+    ( fun () ->
+	  %% Line 24
+	  apply 'test'/1
+	      (( 1
+		 -| ['result_not_wanted'] ))
+      -| [{'function',{'main',0}}] )
+'test'/1 =
+    %% Line 26
+    ( fun (_0) ->
+	  %% Line 27
+	  ( fun (_4,_3) ->
+		let <_1> =
+		    call 'erlang':'+'
+			(( _0
+			   -| [{'function',{'test',1}}] ), _4)
+		in  let <_2> =
+			call 'erlang':'+'
+			    (_1, _3)
+		    in  call 'erlang':'+'
+			    (_2, 1)
+	    -| [{'id',{0,0,'-test/1-fun-0-'}}] )
+      -| [{'function',{'test',1}}] )
+'test'/3 =
+    %% Line 28
+    ( fun (_0,_1,_2) ->
+	  let <_3> =
+	      call %% Line 29
+		   'erlang':%% Line 29
+			    '+'
+		  (_0, _1)
+	  in  let <_4> =
+		  call %% Line 29
+		       'erlang':%% Line 29
+				'+'
+		      (%% Line 29
+		       _3, _2)
+	      in  %% Line 29
+		  call 'erlang':'+'
+		      (_4, 1)
+      -| [{'function',{'test',3}}] )
+'module_info'/0 =
+    ( fun () ->
+	  call 'erlang':'get_module_info'
+	      ('test')
+      -| [{'function',{'module_info',0}}] )
+'module_info'/1 =
+    ( fun (_0) ->
+	  call 'erlang':'get_module_info'
+	      ('test', ( _0
+			 -| [{'function',{'module_info',1}}] ))
+      -| [{'function',{'module_info',1}}] )
+end
