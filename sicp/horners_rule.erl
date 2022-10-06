@@ -22,18 +22,13 @@
 %%%=============================================================================
 
 calculate(X, CoeffSeq) ->
-    accumulate(
+    lists:foldr(
         fun(ThisCoeff, Acc) ->
             ThisCoeff + (X * Acc)
         end,
         0,
         CoeffSeq
     ).
-
-accumulate(_, Initial, []) ->
-    Initial;
-accumulate(Op, Initial, [Hd | Tl]) ->
-    Op(Hd, accumulate(Op, Initial, Tl)).
 
 %%%=============================================================================
 %%% Internal functions
