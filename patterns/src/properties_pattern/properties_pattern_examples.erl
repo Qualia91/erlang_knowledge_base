@@ -5,7 +5,7 @@
 %%% @end
 %%%-----------------------------------------------------------------------------
 
--module(properties_pattern).
+-module(properties_pattern_examples).
 -author("nickolaswood").
 
 -include_lib("eunit/include/eunit.hrl").
@@ -16,12 +16,14 @@
 
 %% External API
 -export([
-properties_pattern_simple_example/0
+    properties_pattern_simple_example/0,
+    properties_pattern_inheritance_example/0
 ]).
 
 % c(properties_node).
-% c(properties_pattern).
-% properties_pattern:properties_pattern_simple_example().
+% c(properties_pattern_examples).
+% properties_pattern_examples:properties_pattern_simple_example().
+% properties_pattern_examples:properties_pattern_inheritance_example().
 
 %%%=============================================================================
 %%% API
@@ -96,7 +98,37 @@ properties_pattern_simple_example() ->
     ?assertEqual(2, H),
     ?assertEqual(#{a => 2, b => 1, c => 3}, I).
     
+properties_pattern_inheritance_example() ->
 
-%%%=============================================================================
-%%% Internal functions
-%%%=============================================================================
+    BaseObjectDef = #{
+        print => fun(_, _) -> io:format("Base object printer~n") end,
+        id => fun(_, _) -> no_id_set end
+    },
+
+    EmployeeObjectDef = #{
+        print => fun(_, _) -> io:format("Employee object printer~n") end,
+        salary => 100
+    },
+
+    ProgrammerObjectDef = #{
+        print => fun(_, _) -> io:format("Programmer object printer~n") end,
+        bonus => 50,
+        total => fun(Self, _) ->
+            io:format("Base object id: ~p~n", [properties_node:run(Self, id)]),
+            properties_node:get_env(Self, salary) + properties_node:get_env(Self, bonus)
+        end
+    },
+
+    {ok, BaseObject} = properties_node:start_link(BaseObjectDef),
+    {ok, EmployeeObject} = properties_node:start_link(EmployeeObjectDef),
+    {ok, ProgrammerObject} = properties_node:start_link(ProgrammerObjectDef),
+
+    properties_node:set_parent(ProgrammerObject, EmployeeObject),
+    properties_node:set_parent(EmployeeObject, BaseObject),
+
+    ?assertEqual(150, properties_node:get_env(ProgrammerObject, salary) + properties_node:get_env(ProgrammerObject, bonus)),
+
+    properties_node:run(ProgrammerObject, print),
+    
+    ?assertEqual(150, properties_node:run(ProgrammerObject, total)),
+    ?assertEqual(100, properties_node:get_env(ProgrammerObject, salary)).

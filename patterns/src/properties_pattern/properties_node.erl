@@ -17,7 +17,10 @@
     start_link/1,
     set_parent/2,
     get_env/2,
-    set_env/3
+    set_env/3,
+    run/2,
+    run/3,
+    get_parent/1
 ]).
 
 %% Callbacks
@@ -42,19 +45,39 @@
 %%% API
 %%%=============================================================================
 
-start_link(InitialEnv) ->
+start_link(InitialEnv) when is_map(InitialEnv) ->
     gen_server:start_link(?MODULE, InitialEnv, []).
 
-set_parent(Pid, ParentPid) ->
+set_parent(Pid, ParentPid) when is_pid(Pid), is_pid(ParentPid) ->
     gen_server:cast(Pid, {set_parent, ParentPid}).
 
+get_env(FullEnv, EnvPath) when is_map(FullEnv) ->
+    find_val_in_map(FullEnv, EnvPath);
 get_env(null, _) ->
     {error, not_found};
-get_env(Pid, EnvPath) ->
+get_env(Pid, EnvPath) when is_pid(Pid) ->
     gen_server:call(Pid, {get_env, EnvPath}, ?TIMEOUT).
 
 set_env(Pid, EnvPath, Var) ->
     gen_server:cast(Pid, {set_env, EnvPath, Var}).
+
+run(FullEnv, EnvPath) when is_map(FullEnv) ->
+    run(FullEnv, EnvPath, {});
+run(Pid, EnvPath) when is_pid(Pid) ->
+    run(Pid, EnvPath, {}).
+
+run(FullEnv, EnvPath, Inputs) when is_map(FullEnv) ->
+    case find_val_in_map(FullEnv, EnvPath) of
+        {error, Reason} ->
+            {error, Reason};
+        Func ->
+            Func(FullEnv, Inputs)
+    end;
+run(Pid, EnvPath, Inputs) when is_pid(Pid) ->
+    gen_server:call(Pid, {run, EnvPath, Inputs}, ?TIMEOUT).
+
+get_parent(Pid) when is_pid(Pid) ->
+    gen_server:call(Pid, get_parent, ?TIMEOUT).
 
 %%%=============================================================================
 %%% Gen Server Callbacks
@@ -63,7 +86,8 @@ set_env(Pid, EnvPath, Var) ->
 init(InitialEnv) ->
     LoopState = #loop_state{
         env = InitialEnv
-    }, 
+    },
+    io:format("~p~n", [self()]),    
     {ok, LoopState}.
 
 handle_call({get_env, EnvPath}, _From, LoopState = #loop_state{env = Env, parent = Parent}) ->
@@ -75,10 +99,34 @@ handle_call({get_env, EnvPath}, _From, LoopState = #loop_state{env = Env, parent
         Val ->
             Val
     end,
+    {reply, Resp, LoopState};
+
+handle_call(get_parent, _From, LoopState = #loop_state{parent = Parent}) ->
+    {reply, Parent, LoopState};
+
+handle_call({run, EnvPath, Inputs}, _From, LoopState = #loop_state{env = Env, parent = Parent}) ->
+    
+    FullEnv = case find_val_in_map(Env, []) of
+        {error, not_found} ->
+            get_env(Parent, []);
+        EnvVal when is_map(EnvVal) ->
+            combine_envs(EnvVal, get_env(Parent, []));
+        EnvVal ->
+            EnvVal
+    end,
+    
+    Resp = case find_val_in_map(FullEnv, EnvPath) of
+        {error, Reason} ->
+            {error, Reason};
+        Func ->
+            Func(FullEnv, Inputs)
+    end,
+    
     {reply, Resp, LoopState}.
 
 handle_cast({set_parent, ParentPid}, LoopState) ->
     {noreply, LoopState#loop_state{parent = ParentPid}};
+
 handle_cast({set_env, EnvPath, Var}, LoopState = #loop_state{env = Env}) ->
     {noreply, LoopState#loop_state{env = set_val_in_env(Env, EnvPath, Var)}}.
 
